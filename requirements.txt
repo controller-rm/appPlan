@@ -6,3 +6,4 @@ python-dotenv
 matplotlib
 Pillow
 openpyxl
+reportlab
