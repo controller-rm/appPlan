@@ -3,7 +3,7 @@ import pandas as pd  # Importando a biblioteca pandas
 import matplotlib.pyplot as plt
 import base64
 from streamlit_option_menu import option_menu
-import app_necessidade_materiais
+import app_necessidade_materiais,carteira_producao
 from PIL import Image
 
 
@@ -248,7 +248,7 @@ if st.session_state.authenticated:
                     with st.sidebar:
                         subpage = option_menu(
                             menu_title="Subpáginas PRODUCAO",  # Título do submenu
-                            options=["INICIO","Necessidade"],  # Opções do submenu
+                            options=["INICIO","Necessidade","Carteira de Pedidos x Estoque ALMOX x Ordem de Fabricação"],  # Opções do submenu
                             icons=["none","caret-right-fill", "caret-right-fill","caret-right-fill"],  # Sem ícones para o submenu
                             menu_icon="cast",  # Ícone do submenu (não será visível)
                             default_index=0,  # Índice da opção selecionada por padrão
@@ -305,7 +305,9 @@ if st.session_state.authenticated:
                     if subpage == "Necessidade":
                         app_necessidade_materiais.subpage()
                         #st.write("Conteúdo da Subpágina 1.1")
-
+    
+                    if subpage == "Carteira de Pedidos x Estoque ALMOX x Ordem de Fabricação":
+                        carteira_producao.subpage()   
    
                     # elif subpage == "Grf":
                     #     formulaBC.subpage()
