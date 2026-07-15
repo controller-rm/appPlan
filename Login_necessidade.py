@@ -243,7 +243,7 @@ if st.session_state.authenticated:
     ###### Conteudo Submenu [INICIO] - ordemfabricacao
 
                 # Adicionar subpáginas se uma página estiver selecionada
-                if selected_page == "PCP - Necessidade de MP":
+                if selected_page == "PRODUCAO":
                     
                     with st.sidebar:
                         subpage = option_menu(
