@@ -1,0 +1,8 @@
+streamlit
+streamlit-option-menu
+pandas
+mysql-connector-python
+python-dotenv
+matplotlib
+Pillow
+openpyxl
