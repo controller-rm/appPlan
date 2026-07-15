@@ -169,7 +169,7 @@ if st.session_state.authenticated:
 
                 # Menu principal # ----------------------------------- Menu Principal ----------------
                 selected_page = option_menu(
-                    menu_title="Controller_Soft",  # Título do menu
+                    menu_title="Controller_Virtual",  # Título do menu
                     options=["MENU","PRODUCAO"],  # Opções do menu
                     icons=["house", "file-earmark-text", "gear","cash-coin","bi-bar-chart-steps"],  # Ícones correspondentes às opções https://icons.getbootstrap.com/
                     menu_icon="none",  # Ícone do menu (não será visível devido à imagem)
