@@ -815,6 +815,104 @@ def subpage():
 
         return resultado
 
+    def normalizar_codigo(serie: pd.Series) -> pd.Series:
+        return (
+            serie
+            .fillna("")
+            .astype(str)
+            .str.replace("\ufeff", "", regex=False)  # Remove BOM
+            .str.replace("\xa0", " ", regex=False)   # Espaço invisível
+            .str.replace("–", "-", regex=False)      # Hífen longo
+            .str.replace("—", "-", regex=False)      # Travessão
+            .str.strip()
+            .str.upper()
+            .str.replace(r"\s+", "", regex=True)     # Remove todos os espaços
+        )
+
+
+
+    def adicionar_qtde_csv(
+        consolidado: pd.DataFrame,
+        arquivo_csv,
+    ) -> pd.DataFrame:
+
+        resultado = consolidado.copy()
+
+        # Quando nenhum CSV for carregado
+        if arquivo_csv is None:
+            resultado["Qtde"] = 0.0
+            return resultado
+
+        # Detecta automaticamente ; ou ,
+        df_csv = pd.read_csv(
+            arquivo_csv,
+            sep=";",
+            encoding="cp1252",
+            dtype=str,
+            index_col=False,
+            usecols=range(38),
+        )  
+
+        df_csv.columns = df_csv.columns.str.strip()
+
+        colunas_obrigatorias = {"Produto", "Qtde"}
+
+        if not colunas_obrigatorias.issubset(df_csv.columns):
+            raise ValueError(
+                "O CSV deve possuir as colunas Produto e Qtde."
+            )
+
+        df_csv["Produto"] = normalizar_codigo(
+            df_csv["Produto"]
+        )
+
+        # Aceita valores como 1.250,50 ou 1250.50
+        df_csv["Qtde"] = (
+            df_csv["Qtde"]
+            .fillna("0")
+            .astype(str)
+            .str.strip()
+            .str.replace("\xa0", "", regex=False)
+            .str.replace(".", "", regex=False)
+            .str.replace(",", ".", regex=False)
+        )
+
+        df_csv["Qtde"] = pd.to_numeric(
+            df_csv["Qtde"],
+            errors="coerce",
+        ).fillna(0)
+
+        # Caso o mesmo produto apareça mais de uma vez
+        df_csv = (
+            df_csv.groupby("Produto", as_index=False)["Qtde"]
+            .sum()
+        )
+
+        resultado["Componente"] = normalizar_codigo(
+            resultado["Componente"]
+        )
+
+        resultado = resultado.merge(
+            df_csv,
+            left_on="Componente",
+            right_on="Produto",
+            how="left",
+        )
+
+        resultado["Qtde"] = resultado["Qtde"].fillna(0)
+
+        resultado.drop(
+            columns=["Produto"],
+            inplace=True,
+            errors="ignore",
+        )
+        
+        resultado["Saldo necessário"] = (
+            resultado["Quantidade total necessária"]
+            - resultado["Qtde"]
+        )
+
+        return resultado
 
     def gerar_excel(
         detalhado: pd.DataFrame,
@@ -1288,10 +1386,23 @@ def subpage():
                         height=505,
                     )
 
+            arquivo_csv_estoque = st.file_uploader(
+                "Carregar CSV de quantidades",
+                type=["csv"],
+                help="O arquivo deve possuir as colunas Produto e Qtde.",
+                key="csv_quantidade_componentes",
+            )
+            
             if not detalhado.empty:
+
+                consolidado_excel = adicionar_qtde_csv(
+                    consolidado,
+                    arquivo_csv_estoque,
+                )
+
                 arquivo_excel = gerar_excel(
                     detalhado,
-                    consolidado,
+                    consolidado_excel,
                 )
 
                 _, coluna_exportar = st.columns([3.2, 1])
