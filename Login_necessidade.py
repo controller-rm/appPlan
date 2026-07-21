@@ -372,5 +372,3 @@ else:
     login_page()
 
 
-
-
