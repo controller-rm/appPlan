@@ -2,9 +2,39 @@ import streamlit as st
 import pandas as pd  # Importando a biblioteca pandas
 import matplotlib.pyplot as plt
 import base64
+from pathlib import Path
 from streamlit_option_menu import option_menu
-import app_necessidade_materiais,carteira_producao
+import app_necessidade_materiais,carteira_producao,comparacao_estrutura_pedidos
 from PIL import Image
+
+
+ARQUIVO_PERMISSOES = Path(__file__).with_name("permissoes_necessidade.csv")
+
+
+def usuario_tem_permissao(usuario, recurso):
+    """Consulta permissões externas ao código; em caso de erro, bloqueia o acesso."""
+    try:
+        permissoes = pd.read_csv(
+            ARQUIVO_PERMISSOES,
+            sep=";",
+            dtype=str,
+            encoding="utf-8-sig",
+        ).fillna("")
+        permissoes.columns = permissoes.columns.str.strip().str.lower()
+        obrigatorias = {"usuario", "recurso", "ativo"}
+        if not obrigatorias.issubset(permissoes.columns):
+            return False
+
+        usuario_normalizado = str(usuario).strip().casefold()
+        recurso_normalizado = str(recurso).strip().casefold()
+        autorizadas = permissoes[
+            permissoes["usuario"].str.strip().str.casefold().eq(usuario_normalizado)
+            & permissoes["recurso"].str.strip().str.casefold().eq(recurso_normalizado)
+            & permissoes["ativo"].str.strip().str.upper().isin(["S", "SIM", "1", "TRUE"])
+        ]
+        return not autorizadas.empty
+    except (OSError, ValueError, pd.errors.ParserError):
+        return False
 
 
 # Configuração da página
@@ -244,12 +274,26 @@ if st.session_state.authenticated:
 
                 # Adicionar subpáginas se uma página estiver selecionada
                 if selected_page == "PRODUCAO":
+                    acesso_comparacao = usuario_tem_permissao(
+                        st.session_state.get("username", ""),
+                        "comparar_estruturas_pedidos",
+                    )
+                    opcoes_producao = [
+                        "INICIO",
+                        "Necessidade",
+                        "Carteira de Pedidos x Estoque ALMOX x Ordem de Fabricação",
+                    ]
+                    if acesso_comparacao:
+                        opcoes_producao.append("Comparar Estruturas dos Pedidos")
+                    icones_producao = ["none"] + [
+                        "caret-right-fill"
+                    ] * (len(opcoes_producao) - 1)
                     
                     with st.sidebar:
                         subpage = option_menu(
                             menu_title="Subpáginas PRODUCAO",  # Título do submenu
-                            options=["INICIO","Necessidade","Carteira de Pedidos x Estoque ALMOX x Ordem de Fabricação"],  # Opções do submenu
-                            icons=["none","caret-right-fill", "caret-right-fill","caret-right-fill"],  # Sem ícones para o submenu
+                            options=opcoes_producao,
+                            icons=icones_producao,
                             menu_icon="cast",  # Ícone do submenu (não será visível)
                             default_index=0,  # Índice da opção selecionada por padrão
                             styles={
@@ -308,6 +352,9 @@ if st.session_state.authenticated:
     
                     if subpage == "Carteira de Pedidos x Estoque ALMOX x Ordem de Fabricação":
                         carteira_producao.subpage()   
+
+                    if subpage == "Comparar Estruturas dos Pedidos" and acesso_comparacao:
+                        comparacao_estrutura_pedidos.subpage()
    
                     # elif subpage == "Grf":
                     #     formulaBC.subpage()
@@ -323,6 +370,7 @@ if st.session_state.authenticated:
 
 else:
     login_page()
+
 
 
 
