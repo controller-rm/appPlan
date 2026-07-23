@@ -57,7 +57,7 @@ def consultar_itens_abertos() -> pd.DataFrame:
     sql = """
         SELECT
             p.nro_pedido,
-            p.codigo_cliente AS cliente,
+            CAST(i.cliente AS CHAR) AS cliente,
             p.cliente_compl AS desc_cliente,
             p.situacao_pedido,
             p.origem_venda,
@@ -120,7 +120,7 @@ def consultar_estruturas(produtos: tuple[str, ...]) -> pd.DataFrame:
 @st.cache_data(ttl=300, show_spinner=False)
 def consultar_ofs_abertas(produtos: tuple[str, ...]) -> pd.DataFrame:
     """Busca OFs abertas para o produto compatível, considerando sua BASE."""
-    colunas = ["produto_base", "produto_of", "nro_of", "data_abertura"]
+    colunas = ["produto_base", "produto_of", "nro_of", "data_abertura", "qtde"]
     produtos = tuple(filter(None, (normalizar_codigo(p) for p in produtos)))
     if not produtos:
         return pd.DataFrame(columns=colunas)
@@ -135,7 +135,8 @@ def consultar_ofs_abertas(produtos: tuple[str, ...]) -> pd.DataFrame:
                     UPPER(TRIM(SUBSTRING_INDEX(CAST(produto AS CHAR), '.', 1))) AS produto_base,
                     CAST(produto AS CHAR) AS produto_of,
                     nro_of,
-                    data_abertura
+                    data_abertura,
+                    qtde
                 FROM ORDEM_FABRIC
                 WHERE UPPER(TRIM(CAST(status_of AS CHAR))) = 'A'
                   AND UPPER(TRIM(SUBSTRING_INDEX(CAST(produto AS CHAR), '.', 1)))
@@ -152,6 +153,7 @@ def consultar_ofs_abertas(produtos: tuple[str, ...]) -> pd.DataFrame:
     resultado["produto_base"] = resultado["produto_base"].map(normalizar_codigo)
     resultado["produto_of"] = resultado["produto_of"].map(normalizar_codigo)
     resultado["data_abertura"] = pd.to_datetime(resultado["data_abertura"], errors="coerce")
+    resultado["qtde"] = pd.to_numeric(resultado["qtde"], errors="coerce").fillna(0)
     return resultado
 
 
@@ -160,6 +162,7 @@ def adicionar_ofs_compativeis(compativeis: pd.DataFrame, ofs: pd.DataFrame) -> p
     resultado["tem_of_andamento"] = "Não"
     resultado["nro_of"] = ""
     resultado["data_abertura_of"] = ""
+    resultado["qtde_of"] = ""
     if resultado.empty or ofs.empty:
         return resultado
 
@@ -167,9 +170,16 @@ def adicionar_ofs_compativeis(compativeis: pd.DataFrame, ofs: pd.DataFrame) -> p
     for produto, grupo in ofs.groupby("produto_base"):
         grupo = grupo.sort_values(["data_abertura", "nro_of"], na_position="last")
         agrupado[produto] = {
-            "nro_of": ", ".join(grupo["nro_of"].dropna().map(normalizar_codigo).unique()),
-            "data_abertura_of": ", ".join(
-                grupo["data_abertura"].dropna().dt.strftime("%d/%m/%Y").unique()
+            "nro_of": " | ".join(
+                normalizar_codigo(valor) for valor in grupo["nro_of"]
+            ),
+            "data_abertura_of": " | ".join(
+                data.strftime("%d/%m/%Y") if pd.notna(data) else ""
+                for data in grupo["data_abertura"]
+            ),
+            "qtde_of": " | ".join(
+                f"{valor:,.4f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                for valor in grupo["qtde"]
             ),
         }
 
@@ -179,6 +189,92 @@ def adicionar_ofs_compativeis(compativeis: pd.DataFrame, ofs: pd.DataFrame) -> p
             resultado.at[indice, "tem_of_andamento"] = "Sim"
             resultado.at[indice, "nro_of"] = dados["nro_of"]
             resultado.at[indice, "data_abertura_of"] = dados["data_abertura_of"]
+            resultado.at[indice, "qtde_of"] = dados["qtde_of"]
+    return resultado
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def consultar_produtos_vencidos(produtos: tuple[str, ...]) -> pd.DataFrame:
+    """Busca produtos vencidos cuja base coincide com o produto analisado."""
+    colunas = [
+        "produto_base", "produto_vencido", "quantidade", "deposito", "vcto_lote"
+    ]
+    produtos_base = tuple(filter(None, (extrair_produto_base(p) for p in produtos)))
+    if not produtos_base:
+        return pd.DataFrame(columns=colunas)
+
+    partes: list[pd.DataFrame] = []
+    conexao = conectar_mysql()
+    try:
+        for lote in em_lotes(produtos_base):
+            marcadores = ", ".join(["%s"] * len(lote))
+            sql = f"""
+                SELECT
+                    UPPER(TRIM(SUBSTRING_INDEX(CAST(produto AS CHAR), '.', 1)))
+                        AS produto_base,
+                    UPPER(TRIM(CAST(produto AS CHAR))) AS produto_vencido,
+                    quantidade,
+                    deposito,
+                    vcto_lote
+                FROM POSICAO_ESTOQUE_ATUAL
+                WHERE vcto_lote IS NOT NULL
+                  AND vcto_lote < CURDATE()
+                  AND UPPER(TRIM(SUBSTRING_INDEX(CAST(produto AS CHAR), '.', 1)))
+                      IN ({marcadores})
+                ORDER BY produto_base, produto_vencido, vcto_lote, deposito
+            """
+            partes.append(pd.read_sql(sql, conexao, params=tuple(lote)))
+    finally:
+        conexao.close()
+
+    if not partes:
+        return pd.DataFrame(columns=colunas)
+
+    resultado = pd.concat(partes, ignore_index=True)
+    resultado["produto_base"] = resultado["produto_base"].map(normalizar_codigo)
+    resultado["produto_vencido"] = resultado["produto_vencido"].map(normalizar_codigo)
+    resultado["quantidade"] = pd.to_numeric(
+        resultado["quantidade"], errors="coerce"
+    ).fillna(0)
+    resultado["vcto_lote"] = pd.to_datetime(resultado["vcto_lote"], errors="coerce")
+    return resultado
+
+
+def adicionar_produtos_vencidos(
+    compativeis: pd.DataFrame,
+    produtos_vencidos: pd.DataFrame,
+) -> pd.DataFrame:
+    resultado = compativeis.copy()
+    resultado["produto_vencido_compativel"] = ""
+    resultado["quantidade_produto_vencido"] = ""
+    resultado["deposito_produto_vencido"] = ""
+    resultado["vcto_lote_produto_vencido"] = ""
+
+    if resultado.empty or produtos_vencidos.empty:
+        return resultado
+
+    vencidos_por_base = {}
+    for produto_base, grupo in produtos_vencidos.groupby("produto_base", sort=False):
+        vencidos_por_base[produto_base] = {
+            "produto": " | ".join(grupo["produto_vencido"].fillna("").astype(str)),
+            "quantidade": " | ".join(
+                f"{valor:,.4f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                for valor in grupo["quantidade"]
+            ),
+            "deposito": " | ".join(grupo["deposito"].fillna("").astype(str)),
+            "vencimento": " | ".join(
+                data.strftime("%d/%m/%Y") if pd.notna(data) else ""
+                for data in grupo["vcto_lote"]
+            ),
+        }
+
+    for indice, linha in resultado.iterrows():
+        dados = vencidos_por_base.get(extrair_produto_base(linha["produto_upload"]))
+        if dados:
+            resultado.at[indice, "produto_vencido_compativel"] = dados["produto"]
+            resultado.at[indice, "quantidade_produto_vencido"] = dados["quantidade"]
+            resultado.at[indice, "deposito_produto_vencido"] = dados["deposito"]
+            resultado.at[indice, "vcto_lote_produto_vencido"] = dados["vencimento"]
     return resultado
 
 
@@ -266,16 +362,24 @@ def calcular_produtos_compativeis(
         for produto, grupo in estrutura_pedidos.groupby("produto")
     }
     pedidos_por_produto = {}
+    clientes_por_produto = {}
     itens_originais_por_produto = {}
     if itens_pedidos is not None and not itens_pedidos.empty:
-        pedidos_por_produto = {
-            produto: ", ".join(sorted({
-                normalizar_codigo(numero)
-                for numero in grupo["nro_pedido"].dropna()
-                if normalizar_codigo(numero)
-            }))
-            for produto, grupo in itens_pedidos.groupby("produto_base")
-        }
+        for produto, grupo in itens_pedidos.groupby("produto_base"):
+            pedidos_clientes = sorted({
+                (
+                    normalizar_codigo(linha["nro_pedido"]),
+                    normalizar_codigo(linha["cliente"]),
+                )
+                for _, linha in grupo.iterrows()
+                if normalizar_codigo(linha["nro_pedido"])
+            })
+            pedidos_por_produto[produto] = " | ".join(
+                pedido for pedido, _ in pedidos_clientes
+            )
+            clientes_por_produto[produto] = " | ".join(
+                cliente for _, cliente in pedidos_clientes
+            )
         itens_originais_por_produto = {
             produto: ", ".join(sorted({
                 normalizar_codigo(codigo)
@@ -300,6 +404,7 @@ def calcular_produtos_compativeis(
                     "produto_compativel_pedido": produto_pedido,
                     "item_pedido_original": itens_originais_por_produto.get(produto_pedido, ""),
                     "nro_pedido": pedidos_por_produto.get(produto_pedido, ""),
+                    "cliente": clientes_por_produto.get(produto_pedido, ""),
                     "itens_estrutura_upload": len(componentes_upload),
                     "itens_em_comum": len(comuns),
                     "percentual_compatibilidade": round(percentual, 2),
@@ -307,6 +412,7 @@ def calcular_produtos_compativeis(
                 })
     colunas = [
         "produto_upload", "produto_compativel_pedido", "item_pedido_original", "nro_pedido",
+        "cliente",
         "itens_estrutura_upload",
         "itens_em_comum", "percentual_compatibilidade", "componentes_em_comum",
     ]
@@ -417,6 +523,8 @@ def subpage() -> None:
             )
             ofs_abertas = consultar_ofs_abertas(produtos_compativeis)
             compativeis = adicionar_ofs_compativeis(compativeis, ofs_abertas)
+            produtos_vencidos = consultar_produtos_vencidos(tuple(produtos_upload))
+            compativeis = adicionar_produtos_vencidos(compativeis, produtos_vencidos)
 
         sem_estrutura = sorted(set(produtos_upload) - set(estrutura_upload["produto"]))
         if sem_estrutura:
@@ -477,10 +585,23 @@ def subpage() -> None:
                         "produto_compativel_pedido": st.column_config.TextColumn(
                             "Produto compatível", width="medium"
                         ),
+                        "produto_vencido_compativel": st.column_config.TextColumn(
+                            "Produto vencido compatível", width="medium"
+                        ),
+                        "quantidade_produto_vencido": st.column_config.TextColumn(
+                            "Quantidade vencida", width="medium"
+                        ),
+                        "deposito_produto_vencido": st.column_config.TextColumn(
+                            "Depósito do vencido", width="medium"
+                        ),
+                        "vcto_lote_produto_vencido": st.column_config.TextColumn(
+                            "Vencimento do lote", width="medium"
+                        ),
                         "item_pedido_original": st.column_config.TextColumn(
                             "Item original", width="medium"
                         ),
                         "nro_pedido": st.column_config.TextColumn("Nº pedido", width="medium"),
+                        "cliente": st.column_config.TextColumn("Cliente", width="medium"),
                         "percentual_compatibilidade": st.column_config.ProgressColumn(
                             "Compatibilidade", format="%.2f%%", min_value=0, max_value=100,
                             width="medium",
@@ -490,6 +611,9 @@ def subpage() -> None:
                         ),
                         "tem_of_andamento": st.column_config.TextColumn("OF aberta"),
                         "nro_of": st.column_config.TextColumn("Nº OF", width="medium"),
+                        "qtde_of": st.column_config.TextColumn(
+                            "Quantidade da OF", width="medium"
+                        ),
                         "data_abertura_of": st.column_config.TextColumn(
                             "Abertura da OF", width="medium"
                         ),
@@ -524,9 +648,14 @@ def subpage() -> None:
                                 f'{compatibilidade["item_pedido_original"]}'
                             )
                             d1.markdown(f'**Nº do pedido:**  {compatibilidade["nro_pedido"]}')
+                            d1.markdown(f'**Cliente:**  {compatibilidade["cliente"] or "—"}')
                             d2.markdown(
                                 f'**Data de abertura da OF:**  '
                                 f'{compatibilidade.get("data_abertura_of", "") or "—"}'
+                            )
+                            d2.markdown(
+                                f'**Quantidade da OF:**  '
+                                f'{compatibilidade.get("qtde_of", "") or "—"}'
                             )
                             st.markdown(
                                 f'**Componentes em comum:**  '
