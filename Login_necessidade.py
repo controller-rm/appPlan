@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import base64
 from pathlib import Path
 from streamlit_option_menu import option_menu
-import app_necessidade_materiais,carteira_producao,comparacao_estrutura_pedidos
+import app_necessidade_materiais,carteira_producao,comparacao_estrutura_pedidos,lotes_vencidos
 from PIL import Image
 
 
@@ -281,6 +281,7 @@ if st.session_state.authenticated:
                     opcoes_producao = [
                         "INICIO",
                         "Necessidade",
+                        "Lotes Vencidos",
                         "Carteira de Pedidos x Estoque ALMOX x Ordem de Fabricação",
                     ]
                     if acesso_comparacao:
@@ -349,6 +350,9 @@ if st.session_state.authenticated:
                     if subpage == "Necessidade":
                         app_necessidade_materiais.subpage()
                         #st.write("Conteúdo da Subpágina 1.1")
+
+                    if subpage == "Lotes Vencidos":
+                        lotes_vencidos.subpage()
     
                     if subpage == "Carteira de Pedidos x Estoque ALMOX x Ordem de Fabricação":
                         carteira_producao.subpage()   
