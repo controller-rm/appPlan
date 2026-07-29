@@ -401,7 +401,7 @@ def subpage():
     # PÁGINA STREAMLIT
     # =========================================================
     #def render():
-        st.set_page_config(page_title="Recuperação por Dia", layout="wide")
+        #st.set_page_config(page_title="Recuperação por Dia", layout="wide")
     
         st.title("Recuperação por Dia (Motivo -031)")
     
