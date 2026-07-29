@@ -7,3 +7,5 @@ matplotlib
 Pillow
 openpyxl
 reportlab
+plotly>=5.20
+kaleido==0.2.1
