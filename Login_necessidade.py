@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import base64
 from pathlib import Path
 from streamlit_option_menu import option_menu
-import app_necessidade_materiais,carteira_producao,comparacao_estrutura_pedidos,lotes_vencidos
+import app_necessidade_materiais,carteira_producao,comparacao_estrutura_pedidos,lotes_vencidos,recuperacao
 from PIL import Image
 
 
@@ -283,6 +283,7 @@ if st.session_state.authenticated:
                         "Necessidade",
                         "Lotes Vencidos",
                         "Carteira de Pedidos x Estoque ALMOX x Ordem de Fabricação",
+                        "Recuperação por motivo",
                     ]
                     if acesso_comparacao:
                         opcoes_producao.append("Comparar Estruturas dos Pedidos")
@@ -359,6 +360,10 @@ if st.session_state.authenticated:
 
                     if subpage == "Comparar Estruturas dos Pedidos" and acesso_comparacao:
                         comparacao_estrutura_pedidos.subpage()
+                        
+                    if subpage == "Recuperação por motivo" and acesso_comparacao:
+                        recuperacao.subpage()
+    
    
                     # elif subpage == "Grf":
                     #     formulaBC.subpage()
