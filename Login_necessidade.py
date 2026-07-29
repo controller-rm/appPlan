@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import base64
 from pathlib import Path
 from streamlit_option_menu import option_menu
-import app_necessidade_materiais,carteira_producao,comparacao_estrutura_pedidos,lotes_vencidos,recuperacao,
+import app_necessidade_materiais,carteira_producao,comparacao_estrutura_pedidos,lotes_vencidos,recuperacao
 from PIL import Image
 
 
