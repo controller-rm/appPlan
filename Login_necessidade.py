@@ -361,7 +361,7 @@ if st.session_state.authenticated:
                     if subpage == "Comparar Estruturas dos Pedidos" and acesso_comparacao:
                         comparacao_estrutura_pedidos.subpage()
                         
-                    if subpage == "Recuperação por motivo" and acesso_comparacao:
+                    if subpage == "Recuperação por motivo":
                         recuperacao.subpage()
     
    
