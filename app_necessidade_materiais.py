@@ -834,13 +834,14 @@ def subpage():
     def adicionar_qtde_csv(
         consolidado: pd.DataFrame,
         arquivo_csv,
+        coluna_quantidade: str = "Qtde",
     ) -> pd.DataFrame:
 
         resultado = consolidado.copy()
 
         # Quando nenhum CSV for carregado
         if arquivo_csv is None:
-            resultado["Qtde"] = 0.0
+            resultado[coluna_quantidade] = 0.0
             return resultado
 
         # Detecta automaticamente ; ou ,
@@ -855,11 +856,12 @@ def subpage():
 
         df_csv.columns = df_csv.columns.str.strip()
 
-        colunas_obrigatorias = {"Produto", "Qtde"}
+        colunas_obrigatorias = {"Produto", coluna_quantidade}
 
         if not colunas_obrigatorias.issubset(df_csv.columns):
             raise ValueError(
-                "O CSV deve possuir as colunas Produto e Qtde."
+                "O CSV deve possuir as colunas Produto e "
+                f"{coluna_quantidade}."
             )
 
         df_csv["Produto"] = normalizar_codigo(
@@ -867,8 +869,8 @@ def subpage():
         )
 
         # Aceita valores como 1.250,50 ou 1250.50
-        df_csv["Qtde"] = (
-            df_csv["Qtde"]
+        df_csv[coluna_quantidade] = (
+            df_csv[coluna_quantidade]
             .fillna("0")
             .astype(str)
             .str.strip()
@@ -877,14 +879,14 @@ def subpage():
             .str.replace(",", ".", regex=False)
         )
 
-        df_csv["Qtde"] = pd.to_numeric(
-            df_csv["Qtde"],
+        df_csv[coluna_quantidade] = pd.to_numeric(
+            df_csv[coluna_quantidade],
             errors="coerce",
         ).fillna(0)
 
         # Caso o mesmo produto apareça mais de uma vez
         df_csv = (
-            df_csv.groupby("Produto", as_index=False)["Qtde"]
+            df_csv.groupby("Produto", as_index=False)[coluna_quantidade]
             .sum()
         )
 
@@ -899,7 +901,9 @@ def subpage():
             how="left",
         )
 
-        resultado["Qtde"] = resultado["Qtde"].fillna(0)
+        resultado[coluna_quantidade] = resultado[
+            coluna_quantidade
+        ].fillna(0)
 
         resultado.drop(
             columns=["Produto"],
@@ -909,7 +913,7 @@ def subpage():
         
         resultado["Saldo necessário"] = (
             resultado["Quantidade total necessária"]
-            - resultado["Qtde"]
+            - resultado[coluna_quantidade]
         )
 
         return resultado
@@ -1387,10 +1391,23 @@ def subpage():
                     )
 
             arquivo_csv_estoque = st.file_uploader(
-                "Carregar CSV de quantidades",
+                "Carregar CSV de quantidades - SGM428 - Produto, Qtde, Qtde Disponivel",
                 type=["csv"],
-                help="O arquivo deve possuir as colunas Produto e Qtde.",
+                help=(
+                    "O arquivo deve possuir a coluna Produto e a coluna de "
+                    "quantidade selecionada abaixo."
+                ),
                 key="csv_quantidade_componentes",
+            )
+
+            coluna_quantidade_csv = st.selectbox(
+                "Coluna de quantidade do CSV",
+                options=["Qtde", "Qtde Disponivel"],
+                help=(
+                    "Escolha qual coluna do arquivo será usada para calcular "
+                    "o saldo necessário."
+                ),
+                key="coluna_quantidade_csv",
             )
             
             if not detalhado.empty:
@@ -1398,6 +1415,7 @@ def subpage():
                 consolidado_excel = adicionar_qtde_csv(
                     consolidado,
                     arquivo_csv_estoque,
+                    coluna_quantidade_csv,
                 )
 
                 arquivo_excel = gerar_excel(
