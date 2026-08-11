@@ -360,7 +360,20 @@ def subpage():
                 SUM(p.quantidade - p.qtde_reservada) AS estoque_disponivel
             FROM POSICAO_ESTOQUE_ATUAL p
             WHERE p.deposito = 'ALMOX'
+            AND NOT (
+                COALESCE(CAST(p.grupo AS UNSIGNED), 0) = 500
+                AND COALESCE(CAST(p.subgrupo AS UNSIGNED), 0) IN (3, 16)
+            )
+            AND COALESCE(CAST(p.grupo AS UNSIGNED), 0) <> 801
             GROUP BY p.produto
+        ),
+
+        produto_cadastro AS (
+            SELECT
+                p.codigo_produto_material,
+                MAX(COALESCE(p.estoque_minimo, 0)) AS estoque_minimo
+            FROM PRODUTO p
+            GROUP BY p.codigo_produto_material
         ),
 
         ordem_fabric AS (
@@ -398,6 +411,7 @@ def subpage():
             c.quantidade_atendida,
             c.quantidade_pronta,
             c.saldo_pendente,
+            COALESCE(p.estoque_minimo, 0) AS estoque_minimo,
             COALESCE(e.estoque_total, 0) AS estoque_total_almox,
             COALESCE(e.estoque_reservado, 0) AS estoque_reservado_almox,
             COALESCE(e.estoque_disponivel, 0) AS estoque_disponivel_almox,
@@ -406,6 +420,8 @@ def subpage():
             c.valor_unitario,
             c.valor_total_item
         FROM carteira c
+        LEFT JOIN produto_cadastro p
+            ON p.codigo_produto_material = c.produto_pedido
         LEFT JOIN estoque e
             ON e.produto = c.cod_produto
         LEFT JOIN ordem_fabric o
@@ -505,6 +521,7 @@ def subpage():
             "quantidade_atendida",
             "quantidade_pronta",
             "saldo_pendente",
+            "estoque_minimo",
             "estoque_total_almox",
             "estoque_reservado_almox",
             "estoque_disponivel_almox",
@@ -732,6 +749,7 @@ def subpage():
         "quantidade_atendida",
         "quantidade_pronta",
         "saldo_pendente",
+        "estoque_minimo",
         "estoque_total_almox",
         "estoque_reservado_almox",
         "estoque_disponivel_almox",
