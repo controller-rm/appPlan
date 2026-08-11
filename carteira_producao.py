@@ -421,7 +421,7 @@ def subpage():
             c.valor_total_item
         FROM carteira c
         LEFT JOIN produto_cadastro p
-            ON p.codigo_produto_material = c.produto_pedido
+            ON p.codigo_produto_material = c.cod_produto
         LEFT JOIN estoque e
             ON e.produto = c.cod_produto
         LEFT JOIN ordem_fabric o
