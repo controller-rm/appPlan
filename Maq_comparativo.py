@@ -295,7 +295,12 @@ def subpage():
             "3. Os valores refletem o periodo e as origens selecionadas nos filtros."
         )
 
-        pdf_bytes = pdf.output(dest="S").encode("latin1")
+        conteudo_pdf = pdf.output(dest="S")
+        pdf_bytes = (
+            conteudo_pdf.encode("latin1")
+            if isinstance(conteudo_pdf, str)
+            else bytes(conteudo_pdf)
+        )
         buffer = io.BytesIO(pdf_bytes)
 
         os.remove("fig_comp.png")
