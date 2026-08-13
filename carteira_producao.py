@@ -446,10 +446,36 @@ def subpage():
             return pd.DataFrame()
 
         sql = """
+        WITH carteira_por_item AS (
+            SELECT
+                MAX(c.numero_pedido) AS numero_pedido,
+                CAST(c.numero_pedido AS UNSIGNED) DIV 100 AS numero_pedido_of,
+                CAST(c.sequencia_pedido AS UNSIGNED) AS item_pedido,
+                MAX(c.cod_produto) AS cod_produto
+            FROM CARTEIRA_PEDIDOS c
+            GROUP BY
+                CAST(c.numero_pedido AS UNSIGNED) DIV 100,
+                CAST(c.sequencia_pedido AS UNSIGNED)
+        ),
+
+        produto_cadastro AS (
+            SELECT
+                p.codigo_produto_material,
+                MAX(COALESCE(p.estoque_minimo, 0)) AS estoque_minimo,
+                MAX(NULLIF(TRIM(p.tipo_material), '')) AS tipo_material
+            FROM PRODUTO p
+            GROUP BY p.codigo_produto_material
+        )
+
         SELECT
             o.nro_of,
             o.produto,
+            cp.numero_pedido,
+            cp.numero_pedido_of,
+            cp.item_pedido,
+            cp.cod_produto,
             p.codigo_produto_material,
+            COALESCE(p.tipo_material, 'Nao informado') AS tipo_material,
             o.status_of,
             o.data_abertura,
             o.data_fechamento,
@@ -478,8 +504,12 @@ def subpage():
 
         FROM ORDEM_FABRIC o
 
-        LEFT JOIN PRODUTO p
-            ON p.codigo_produto_material = o.produto
+        LEFT JOIN carteira_por_item cp
+            ON cp.numero_pedido_of = CAST(LEFT(TRIM(o.nro_of), 6) AS UNSIGNED)
+            AND cp.item_pedido = CAST(RIGHT(TRIM(o.nro_of), 3) AS UNSIGNED)
+
+        LEFT JOIN produto_cadastro p
+            ON TRIM(p.codigo_produto_material) = TRIM(cp.cod_produto)
 
         WHERE
         (
@@ -492,7 +522,7 @@ def subpage():
         OR
         (
             o.status_of = 'A'
-            AND o.data_abertura <= %s
+            AND o.data_fechamento IS NULL
             AND o.sub_grupo NOT IN (1, 3, 16)
             AND o.grupo NOT IN (800, 801)
             AND o.origem NOT IN (997)
@@ -508,7 +538,7 @@ def subpage():
         df_auditoria = pd.read_sql(
             sql,
             conn,
-            params=[data_ini, data_fim, data_fim]
+            params=[data_ini, data_fim]
         )
 
         conn.close()
@@ -781,6 +811,21 @@ def subpage():
     st.markdown("---")
     st.subheader("📊 Relatório de OF x Estoque Mínimo")
 
+    st.info(
+        "**Regras consideradas neste relatório:**\n\n"
+        "- **OF fechadas no período:** status `F` e `data_fechamento` entre "
+        "a data inicial e a data final informadas.\n"
+        "- **OF em andamento:** status `A` e `data_fechamento` vazia, "
+        "independentemente do período selecionado.\n"
+        "- **Exclusões:** subgrupos `1`, `3` e `16`; grupos `800` e `801`; "
+        "e origem `997`.\n"
+        "- O filtro **Tipo de Material - Relatório OF**, na barra lateral, "
+        "é aplicado às OFs fechadas e em andamento. Sem seleção, todos os "
+        "tipos são considerados.\n"
+        "- A quantidade apresentada nos cartões corresponde ao número de "
+        "OFs distintas."
+    )
+
     col_data1, col_data2 = st.columns(2)
 
     data_ini = col_data1.date_input(
@@ -801,6 +846,21 @@ def subpage():
 
     df_auditoria = carregar_auditoria_of(data_ini, data_fim)
     df_auditoria = preparar_auditoria(df_auditoria)
+
+    tipos_material = st.sidebar.multiselect(
+        "Tipo de Material - Relatorio OF",
+        options=(
+            sorted(df_auditoria["tipo_material"].dropna().unique())
+            if not df_auditoria.empty
+            else []
+        ),
+        key="filtro_tipo_material_of"
+    )
+
+    if tipos_material:
+        df_auditoria = df_auditoria[
+            df_auditoria["tipo_material"].isin(tipos_material)
+        ]
 
     if df_auditoria.empty:
         st.warning("Nenhuma OF encontrada para o período informado.")
@@ -899,7 +959,12 @@ def subpage():
             "tipo_estoque_minimo",
             "nro_of",
             "produto",
+            "numero_pedido",
+            "numero_pedido_of",
+            "item_pedido",
+            "cod_produto",
             "codigo_produto_material",
+            "tipo_material",
             "status_of",
             "data_abertura",
             "data_fechamento",
