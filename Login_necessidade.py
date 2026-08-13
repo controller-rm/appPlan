@@ -365,7 +365,7 @@ if st.session_state.authenticated:
                     if subpage == "Recuperação por motivo":
                         recuperacao.subpage()
                     
-                    if subpage == "Máquina 6020 x Consolidado 1008+1009" and acesso_comparacao:
+                    if subpage == "Máquina 6020 x Consolidado 1008+1009":
                         Maq_comparativo.subpage()
    
                     # elif subpage == "Grf":
