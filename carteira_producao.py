@@ -361,7 +361,7 @@ def subpage():
             FROM POSICAO_ESTOQUE_ATUAL p
             WHERE p.deposito = 'ALMOX'
             AND NOT (
-                COALESCE(CAST(p.grupo AS UNSIGNED), 0) = 500
+                COALESCE(CAST(p.grupo AS UNSIGNED), 0) IN (500, 600)
 
             )
             AND COALESCE(CAST(p.grupo AS UNSIGNED), 0) <> 801
