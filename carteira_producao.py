@@ -362,7 +362,7 @@ def subpage():
             WHERE p.deposito = 'ALMOX'
             AND NOT (
                 COALESCE(CAST(p.grupo AS UNSIGNED), 0) = 500
-                #AND COALESCE(CAST(p.subgrupo AS UNSIGNED), 0) IN (3, 16)
+
             )
             AND COALESCE(CAST(p.grupo AS UNSIGNED), 0) <> 801
             GROUP BY p.produto
