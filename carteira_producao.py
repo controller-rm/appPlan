@@ -383,7 +383,7 @@ def subpage():
             FROM ORDEM_FABRIC o
             WHERE o.status_of = 'A'
             AND o.sub_grupo NOT IN (1, 3, 16)
-            AND o.grupo NOT IN (801,800)
+            AND COALESCE(CAST(o.grupo AS UNSIGNED), 0) NOT IN (500, 600, 800, 801)
             AND o.origem NOT IN (997)
             GROUP BY o.produto
         )
@@ -516,7 +516,7 @@ def subpage():
             o.status_of = 'F'
             AND o.data_fechamento BETWEEN %s AND %s
             AND o.sub_grupo NOT IN (1, 3, 16)
-            AND o.grupo NOT IN (800, 801)
+            AND COALESCE(CAST(o.grupo AS UNSIGNED), 0) NOT IN (500, 600, 800, 801)
             AND o.origem NOT IN (997)
         )
         OR
@@ -524,7 +524,7 @@ def subpage():
             o.status_of = 'A'
             AND o.data_fechamento IS NULL
             AND o.sub_grupo NOT IN (1, 3, 16)
-            AND o.grupo NOT IN (800, 801)
+            AND COALESCE(CAST(o.grupo AS UNSIGNED), 0) NOT IN (500, 600, 800, 801)
             AND o.origem NOT IN (997)
         )
 
@@ -817,7 +817,7 @@ def subpage():
         "a data inicial e a data final informadas.\n"
         "- **OF em andamento:** status `A` e `data_fechamento` vazia, "
         "independentemente do período selecionado.\n"
-        "- **Exclusões:** subgrupos `1`, `3` e `16`; grupos `800` e `801`; "
+        "- **Exclusões:** subgrupos `1`, `3` e `16`; grupos `500`, `600`, `800` e `801`; "
         "e origem `997`.\n"
         "- O filtro **Tipo de Material - Relatório OF**, na barra lateral, "
         "é aplicado às OFs fechadas e em andamento. Sem seleção, todos os "
