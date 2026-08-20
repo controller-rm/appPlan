@@ -361,8 +361,8 @@ def subpage():
             FROM POSICAO_ESTOQUE_ATUAL p
             WHERE p.deposito = 'ALMOX'
             AND NOT (
-                COALESCE(CAST(p.grupo AS UNSIGNED), 0) IN (500, 600)
-
+                COALESCE(CAST(p.grupo AS UNSIGNED), 0) = 500
+                AND COALESCE(CAST(p.subgrupo AS UNSIGNED), 0) IN (3, 16)
             )
             AND COALESCE(CAST(p.grupo AS UNSIGNED), 0) <> 801
             GROUP BY p.produto
@@ -371,7 +371,8 @@ def subpage():
         produto_cadastro AS (
             SELECT
                 p.codigo_produto_material,
-                MAX(COALESCE(p.estoque_minimo, 0)) AS estoque_minimo
+                MAX(COALESCE(p.estoque_minimo, 0)) AS estoque_minimo,
+                MAX(NULLIF(TRIM(p.tipo_material), '')) AS tipo_material
             FROM PRODUTO p
             GROUP BY p.codigo_produto_material
         ),
@@ -383,7 +384,7 @@ def subpage():
             FROM ORDEM_FABRIC o
             WHERE o.status_of = 'A'
             AND o.sub_grupo NOT IN (1, 3, 16)
-            AND COALESCE(CAST(o.grupo AS UNSIGNED), 0) NOT IN (500, 600, 800, 801)
+            AND o.grupo NOT IN (801,800)
             AND o.origem NOT IN (997)
             GROUP BY o.produto
         )
@@ -412,6 +413,7 @@ def subpage():
             c.quantidade_pronta,
             c.saldo_pendente,
             COALESCE(p.estoque_minimo, 0) AS estoque_minimo,
+            COALESCE(p.tipo_material, 'Nao informado') AS tipo_material,
             COALESCE(e.estoque_total, 0) AS estoque_total_almox,
             COALESCE(e.estoque_reservado, 0) AS estoque_reservado_almox,
             COALESCE(e.estoque_disponivel, 0) AS estoque_disponivel_almox,
@@ -516,7 +518,7 @@ def subpage():
             o.status_of = 'F'
             AND o.data_fechamento BETWEEN %s AND %s
             AND o.sub_grupo NOT IN (1, 3, 16)
-            AND COALESCE(CAST(o.grupo AS UNSIGNED), 0) NOT IN (500, 600, 800, 801)
+            AND o.grupo NOT IN (800, 801)
             AND o.origem NOT IN (997)
         )
         OR
@@ -524,7 +526,7 @@ def subpage():
             o.status_of = 'A'
             AND o.data_fechamento IS NULL
             AND o.sub_grupo NOT IN (1, 3, 16)
-            AND COALESCE(CAST(o.grupo AS UNSIGNED), 0) NOT IN (500, 600, 800, 801)
+            AND o.grupo NOT IN (800, 801)
             AND o.origem NOT IN (997)
         )
 
@@ -683,6 +685,15 @@ def subpage():
 
     st.sidebar.header("Filtros")
 
+    opcoes_tipo_material = sorted(df["tipo_material"].dropna().unique())
+    tipos_material_desconsiderar = st.sidebar.multiselect(
+        "Desconsiderar Tipo de Material",
+        options=opcoes_tipo_material,
+        default=["FO"] if "FO" in opcoes_tipo_material else [],
+        help="Os tipos selecionados não entram nos indicadores, tabelas e arquivos exportados.",
+        key="tipos_material_desconsiderar"
+    )
+
     clientes = st.sidebar.multiselect(
         "Cliente",
         sorted(df["desc_cliente"].dropna().unique())
@@ -709,6 +720,11 @@ def subpage():
     )
 
     df_filtrado = df.copy()
+
+    if tipos_material_desconsiderar:
+        df_filtrado = df_filtrado[
+            ~df_filtrado["tipo_material"].isin(tipos_material_desconsiderar)
+        ]
 
     if clientes:
         df_filtrado = df_filtrado[df_filtrado["desc_cliente"].isin(clientes)]
@@ -780,6 +796,7 @@ def subpage():
         "quantidade_pronta",
         "saldo_pendente",
         "estoque_minimo",
+        "tipo_material",
         "estoque_total_almox",
         "estoque_reservado_almox",
         "estoque_disponivel_almox",
@@ -817,11 +834,11 @@ def subpage():
         "a data inicial e a data final informadas.\n"
         "- **OF em andamento:** status `A` e `data_fechamento` vazia, "
         "independentemente do período selecionado.\n"
-        "- **Exclusões:** subgrupos `1`, `3` e `16`; grupos `500`, `600`, `800` e `801`; "
+        "- **Exclusões:** subgrupos `1`, `3` e `16`; grupos `800` e `801`; "
         "e origem `997`.\n"
-        "- O filtro **Tipo de Material - Relatório OF**, na barra lateral, "
-        "é aplicado às OFs fechadas e em andamento. Sem seleção, todos os "
-        "tipos são considerados.\n"
+        "- O filtro **Desconsiderar Tipo de Material**, na barra lateral, "
+        "é aplicado à carteira e às OFs fechadas e em andamento. Por padrão, "
+        "o tipo `FO` é desconsiderado.\n"
         "- A quantidade apresentada nos cartões corresponde ao número de "
         "OFs distintas."
     )
@@ -847,19 +864,9 @@ def subpage():
     df_auditoria = carregar_auditoria_of(data_ini, data_fim)
     df_auditoria = preparar_auditoria(df_auditoria)
 
-    tipos_material = st.sidebar.multiselect(
-        "Tipo de Material - Relatorio OF",
-        options=(
-            sorted(df_auditoria["tipo_material"].dropna().unique())
-            if not df_auditoria.empty
-            else []
-        ),
-        key="filtro_tipo_material_of"
-    )
-
-    if tipos_material:
+    if tipos_material_desconsiderar:
         df_auditoria = df_auditoria[
-            df_auditoria["tipo_material"].isin(tipos_material)
+            ~df_auditoria["tipo_material"].isin(tipos_material_desconsiderar)
         ]
 
     if df_auditoria.empty:
