@@ -441,6 +441,25 @@ def subpage():
 
 
     @st.cache_data(ttl=300)
+    def carregar_tipos_material():
+        conn = connect_to_mysql()
+
+        if conn is None:
+            return []
+
+        sql = """
+        SELECT DISTINCT TRIM(tipo_material) AS tipo_material
+        FROM PRODUTO
+        WHERE NULLIF(TRIM(tipo_material), '') IS NOT NULL
+        ORDER BY tipo_material
+        """
+
+        df_tipos = pd.read_sql(sql, conn)
+        conn.close()
+        return df_tipos["tipo_material"].dropna().tolist()
+
+
+    @st.cache_data(ttl=300)
     def carregar_auditoria_of(data_ini, data_fim):
         conn = connect_to_mysql()
 
@@ -511,7 +530,7 @@ def subpage():
             AND cp.item_pedido = CAST(RIGHT(TRIM(o.nro_of), 3) AS UNSIGNED)
 
         LEFT JOIN produto_cadastro p
-            ON TRIM(p.codigo_produto_material) = TRIM(cp.cod_produto)
+            ON TRIM(p.codigo_produto_material) = TRIM(o.produto)
 
         WHERE
         (
@@ -685,13 +704,18 @@ def subpage():
 
     st.sidebar.header("Filtros")
 
-    opcoes_tipo_material = sorted(df["tipo_material"].dropna().unique())
+    opcoes_tipo_material = carregar_tipos_material()
+    if not opcoes_tipo_material:
+        opcoes_tipo_material = sorted(df["tipo_material"].dropna().unique())
+    if "FO" not in opcoes_tipo_material:
+        opcoes_tipo_material = sorted([*opcoes_tipo_material, "FO"])
+
     tipos_material_desconsiderar = st.sidebar.multiselect(
         "Desconsiderar Tipo de Material",
         options=opcoes_tipo_material,
-        default=["FO"] if "FO" in opcoes_tipo_material else [],
+        default=["FO"],
         help="Os tipos selecionados não entram nos indicadores, tabelas e arquivos exportados.",
-        key="tipos_material_desconsiderar"
+        key="tipos_material_desconsiderar_v2"
     )
 
     clientes = st.sidebar.multiselect(
@@ -722,8 +746,12 @@ def subpage():
     df_filtrado = df.copy()
 
     if tipos_material_desconsiderar:
+        tipos_excluidos = {
+            str(tipo).strip().upper()
+            for tipo in tipos_material_desconsiderar
+        }
         df_filtrado = df_filtrado[
-            ~df_filtrado["tipo_material"].isin(tipos_material_desconsiderar)
+            ~df_filtrado["tipo_material"].astype(str).str.strip().str.upper().isin(tipos_excluidos)
         ]
 
     if clientes:
@@ -866,7 +894,7 @@ def subpage():
 
     if tipos_material_desconsiderar:
         df_auditoria = df_auditoria[
-            ~df_auditoria["tipo_material"].isin(tipos_material_desconsiderar)
+            ~df_auditoria["tipo_material"].astype(str).str.strip().str.upper().isin(tipos_excluidos)
         ]
 
     if df_auditoria.empty:
