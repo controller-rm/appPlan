@@ -472,7 +472,9 @@ def subpage():
                 MAX(c.numero_pedido) AS numero_pedido,
                 CAST(c.numero_pedido AS UNSIGNED) DIV 100 AS numero_pedido_of,
                 CAST(c.sequencia_pedido AS UNSIGNED) AS item_pedido,
-                MAX(c.cod_produto) AS cod_produto
+                MAX(c.cod_produto) AS cod_produto,
+                MAX(c.produto) AS produto_pedido,
+                MAX(c.desc_produto) AS desc_produto_pedido
             FROM CARTEIRA_PEDIDOS c
             GROUP BY
                 CAST(c.numero_pedido AS UNSIGNED) DIV 100,
@@ -486,6 +488,22 @@ def subpage():
                 MAX(NULLIF(TRIM(p.tipo_material), '')) AS tipo_material
             FROM PRODUTO p
             GROUP BY p.codigo_produto_material
+        ),
+
+        carteira_classificada AS (
+            SELECT
+                cp.*,
+                p.codigo_produto_material,
+                COALESCE(p.estoque_minimo, 0) AS estoque_minimo,
+                COALESCE(p.tipo_material, 'Nao informado') AS tipo_material,
+                CASE
+                    WHEN COALESCE(p.estoque_minimo, 0) > 0
+                        THEN 'Produtos Produzido Estoque minimo'
+                    ELSE 'Produtos Produzido S/ Estoque minimo'
+                END AS tipo_estoque_minimo
+            FROM carteira_por_item cp
+            LEFT JOIN produto_cadastro p
+                ON TRIM(p.codigo_produto_material) = TRIM(cp.cod_produto)
         )
 
         SELECT
@@ -495,8 +513,10 @@ def subpage():
             cp.numero_pedido_of,
             cp.item_pedido,
             cp.cod_produto,
-            p.codigo_produto_material,
-            COALESCE(p.tipo_material, 'Nao informado') AS tipo_material,
+            cp.produto_pedido,
+            cp.desc_produto_pedido,
+            cp.codigo_produto_material,
+            cp.tipo_material,
             o.status_of,
             o.data_abertura,
             o.data_fechamento,
@@ -509,13 +529,8 @@ def subpage():
                 ELSE 'OUTROS'
             END AS grupo_of,
 
-            COALESCE(p.estoque_minimo, 0) AS estoque_minimo,
-
-            CASE
-                WHEN COALESCE(p.estoque_minimo, 0) > 0
-                    THEN 'Produtos Produzido Estoque minimo'
-                ELSE 'Produtos Produzido S/ Estoque minimo'
-            END AS tipo_estoque_minimo,
+            cp.estoque_minimo,
+            cp.tipo_estoque_minimo,
 
             CASE
                 WHEN o.status_of = 'F'
@@ -523,19 +538,17 @@ def subpage():
                 ELSE COALESCE(o.qtde, 0)
             END AS qtd_kg_relatorio
 
-        FROM ORDEM_FABRIC o
+        FROM carteira_classificada cp
 
-        LEFT JOIN carteira_por_item cp
-            ON cp.numero_pedido_of = CAST(LEFT(TRIM(o.nro_of), 6) AS UNSIGNED)
-            AND cp.item_pedido = CAST(RIGHT(TRIM(o.nro_of), 3) AS UNSIGNED)
-
-        LEFT JOIN produto_cadastro p
-            ON TRIM(p.codigo_produto_material) = TRIM(o.produto)
+        INNER JOIN ORDEM_FABRIC o
+            ON CAST(LEFT(TRIM(o.nro_of), 6) AS UNSIGNED) = cp.numero_pedido_of
+            AND CAST(RIGHT(TRIM(o.nro_of), 3) AS UNSIGNED) = cp.item_pedido
 
         WHERE
         (
             o.status_of = 'F'
-            AND o.data_fechamento BETWEEN %s AND %s
+            AND o.data_fechamento >= %s
+            AND o.data_fechamento < DATE_ADD(%s, INTERVAL 1 DAY)
             AND o.sub_grupo NOT IN (1, 3, 16)
             AND o.grupo NOT IN (800, 801)
             AND o.origem NOT IN (997)
@@ -858,6 +871,9 @@ def subpage():
 
     st.info(
         "**Regras consideradas neste relatório:**\n\n"
+        "- A análise parte de cada item da `CARTEIRA_PEDIDOS`. O estoque mínimo "
+        "é consultado pelo `cod_produto` desse item. Depois, a OF correspondente "
+        "é localizada pela máscara pedido + sequência do item.\n"
         "- **OF fechadas no período:** status `F` e `data_fechamento` entre "
         "a data inicial e a data final informadas.\n"
         "- **OF em andamento:** status `A` e `data_fechamento` vazia, "
@@ -866,7 +882,9 @@ def subpage():
         "e origem `997`.\n"
         "- O filtro **Desconsiderar Tipo de Material**, na barra lateral, "
         "é aplicado à carteira e às OFs fechadas e em andamento. Por padrão, "
-        "o tipo `FO` é desconsiderado.\n"
+        "o tipo `FO` é desconsiderado. No relatório de OFs, o tipo e o estoque "
+        "mínimo são os do `cod_produto`/item PA do pedido associado, e não os "
+        "do produto-base FO fabricado.\n"
         "- A quantidade apresentada nos cartões corresponde ao número de "
         "OFs distintas."
     )
@@ -998,6 +1016,8 @@ def subpage():
             "numero_pedido_of",
             "item_pedido",
             "cod_produto",
+            "produto_pedido",
+            "desc_produto_pedido",
             "codigo_produto_material",
             "tipo_material",
             "status_of",
