@@ -106,12 +106,14 @@ def subpage():
     periodo = st.sidebar.date_input(
         "Período",
         value=(inicio_padrao, fim_padrao),
-        min_value=data_min,
         max_value=data_max,
         format="DD/MM/YYYY",
     )
     if isinstance(periodo, date):
         periodo = (periodo, periodo)
+    elif len(periodo) < 2:
+        st.sidebar.info("Selecione também a data final do período.")
+        st.stop()
 
     origens = sorted(df["origem"].dropna().unique().tolist())
     origens_excluir = st.sidebar.multiselect(
@@ -120,13 +122,14 @@ def subpage():
         key="origens_excluir_comparativo"
     )
 
-    inicio_periodo = pd.to_datetime(periodo[0])
-    fim_periodo = pd.to_datetime(periodo[1])
+    inicio_periodo = pd.to_datetime(periodo[0]).normalize()
+    fim_periodo = pd.to_datetime(periodo[1]).normalize()
+    fim_periodo_exclusivo = fim_periodo + pd.Timedelta(days=1)
 
     # ---------------- APLICA FILTROS ----------------
     df_filtrado = df[
         (df["data_abertura"] >= inicio_periodo)
-        & (df["data_abertura"] <= fim_periodo)
+        & (df["data_abertura"] < fim_periodo_exclusivo)
         & (~df["origem"].isin(origens_excluir))
     ].copy()
 
