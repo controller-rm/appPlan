@@ -470,15 +470,20 @@ def subpage():
         WITH carteira_por_item AS (
             SELECT
                 MAX(c.numero_pedido) AS numero_pedido,
-                CAST(c.numero_pedido AS UNSIGNED) DIV 100 AS numero_pedido_of,
-                CAST(c.sequencia_pedido AS UNSIGNED) AS item_pedido,
+                CONCAT(
+                    LEFT(REGEXP_REPLACE(TRIM(c.numero_pedido), '[^0-9]', ''), 6),
+                    RIGHT(REGEXP_REPLACE(TRIM(c.numero_pedido), '[^0-9]', ''), 3)
+                ) AS numero_pedido_of,
+                MAX(CAST(c.sequencia_pedido AS UNSIGNED)) AS item_pedido,
                 MAX(c.cod_produto) AS cod_produto,
                 MAX(c.produto) AS produto_pedido,
                 MAX(c.desc_produto) AS desc_produto_pedido
             FROM CARTEIRA_PEDIDOS c
             GROUP BY
-                CAST(c.numero_pedido AS UNSIGNED) DIV 100,
-                CAST(c.sequencia_pedido AS UNSIGNED)
+                CONCAT(
+                    LEFT(REGEXP_REPLACE(TRIM(c.numero_pedido), '[^0-9]', ''), 6),
+                    RIGHT(REGEXP_REPLACE(TRIM(c.numero_pedido), '[^0-9]', ''), 3)
+                )
         ),
 
         produto_cadastro AS (
@@ -541,8 +546,10 @@ def subpage():
         FROM carteira_classificada cp
 
         INNER JOIN ORDEM_FABRIC o
-            ON CAST(LEFT(TRIM(o.nro_of), 6) AS UNSIGNED) = cp.numero_pedido_of
-            AND CAST(RIGHT(TRIM(o.nro_of), 3) AS UNSIGNED) = cp.item_pedido
+            ON CONCAT(
+                LEFT(REGEXP_REPLACE(TRIM(o.nro_of), '[^0-9]', ''), 6),
+                RIGHT(REGEXP_REPLACE(TRIM(o.nro_of), '[^0-9]', ''), 3)
+            ) = cp.numero_pedido_of
 
         WHERE
         (
@@ -873,7 +880,8 @@ def subpage():
         "**Regras consideradas neste relatório:**\n\n"
         "- A análise parte de cada item da `CARTEIRA_PEDIDOS`. O estoque mínimo "
         "é consultado pelo `cod_produto` desse item. Depois, a OF correspondente "
-        "é localizada pela máscara pedido + sequência do item.\n"
+        "é localizada removendo a máscara do pedido/OF e comparando os 6 primeiros "
+        "+ 3 últimos dígitos (ex.: `030386-00-020` → `030386020`).\n"
         "- **OF fechadas no período:** status `F` e `data_fechamento` entre "
         "a data inicial e a data final informadas.\n"
         "- **OF em andamento:** status `A` e `data_fechamento` vazia, "
