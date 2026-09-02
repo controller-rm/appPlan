@@ -460,7 +460,7 @@ def subpage():
 
 
     @st.cache_data(ttl=300)
-    def carregar_auditoria_of(data_ini, data_fim):
+    def carregar_auditoria_of(data_ini, data_fim, versao_consulta):
         conn = connect_to_mysql()
 
         if conn is None:
@@ -728,7 +728,7 @@ def subpage():
         options=opcoes_tipo_material,
         default=["FO"],
         help="Os tipos selecionados não entram nos indicadores, tabelas e arquivos exportados.",
-        key="tipos_material_desconsiderar_v2"
+        key="tipos_material_desconsiderar_v3"
     )
 
     clientes = st.sidebar.multiselect(
@@ -908,8 +908,9 @@ def subpage():
         st.error("A data inicial não pode ser maior que a data final.")
         st.stop()
 
-    df_auditoria = carregar_auditoria_of(data_ini, data_fim)
+    df_auditoria = carregar_auditoria_of(data_ini, data_fim, "carteira_por_item_v3")
     df_auditoria = preparar_auditoria(df_auditoria)
+    qtd_antes_filtro_material = len(df_auditoria)
 
     if tipos_material_desconsiderar:
         df_auditoria = df_auditoria[
@@ -917,7 +918,13 @@ def subpage():
         ]
 
     if df_auditoria.empty:
-        st.warning("Nenhuma OF encontrada para o período informado.")
+        if qtd_antes_filtro_material > 0:
+            st.warning(
+                "As OFs foram encontradas, mas todas foram removidas pelo filtro "
+                "Desconsiderar Tipo de Material. Revise a seleção na barra lateral."
+            )
+        else:
+            st.warning("Nenhuma OF encontrada para o período informado.")
     else:
         fechadas_com = df_auditoria[
             (df_auditoria["grupo_of"] == "OF FECHADAS NO PERÍODO")
