@@ -348,6 +348,7 @@ def subpage():
                 '6-Atendido Total',
                 '9-Cancelado'
             )
+            AND COALESCE(TRIM(c.origem_venda), '') NOT LIKE '997%'
             AND (c.quantidade_pedida - c.quantidade_atendida) > 0
             AND CAST(c.cme AS UNSIGNED) = 210
         ),
@@ -476,6 +477,7 @@ def subpage():
                 MAX(c.produto) AS produto_pedido,
                 MAX(c.desc_produto) AS desc_produto_pedido
             FROM CARTEIRA_PEDIDOS c
+            WHERE COALESCE(TRIM(c.origem_venda), '') NOT LIKE '997%'
             GROUP BY
                 CAST(c.numero_pedido AS UNSIGNED) DIV 100,
                 CAST(c.sequencia_pedido AS UNSIGNED)
@@ -880,7 +882,7 @@ def subpage():
         "- **OF em andamento:** status `A` e `data_fechamento` vazia, "
         "independentemente do período selecionado.\n"
         "- **Exclusões:** subgrupos `1`, `3` e `16`; grupos `800` e `801`; "
-        "e origem `997`.\n"
+        "origem `997` da OF; e pedidos cuja `origem_venda` começa com `997`.\n"
         "- O filtro **Desconsiderar Tipo de Material**, na barra lateral, "
         "é aplicado à carteira e às OFs fechadas e em andamento. Por padrão, "
         "o tipo `FO` é desconsiderado. No relatório de OFs, o tipo e o estoque "
@@ -908,7 +910,7 @@ def subpage():
         st.error("A data inicial não pode ser maior que a data final.")
         st.stop()
 
-    df_auditoria = carregar_auditoria_of(data_ini, data_fim, "carteira_por_item_v3")
+    df_auditoria = carregar_auditoria_of(data_ini, data_fim, "carteira_por_item_v4_origem_997")
     df_auditoria = preparar_auditoria(df_auditoria)
     qtd_antes_filtro_material = len(df_auditoria)
 
